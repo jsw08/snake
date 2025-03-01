@@ -102,7 +102,7 @@ impl Player {
         }
     }
 
-    fn update_pos(&mut self, screen_size: &(u16, u16)) {
+    fn update_pos(&mut self, screen_size: &(u16, u16)) -> bool {
         let head = &self.segments[0];
 
         let new_coord = match self.move_direction {
@@ -113,11 +113,13 @@ impl Player {
         };
 
         if self.check_collisions(&new_coord, screen_size) {
-            return;
+            return true;
         }
 
         self.segments.push_front(new_coord);
         self.segments.pop_back();
+
+        false
     }
 }
 
@@ -153,13 +155,15 @@ impl Food {
         }
     }
 
-    fn check_eaten(&mut self, screen_size: &(u16, u16), player: &mut Player) {
+    fn check_eaten(&mut self, screen_size: &(u16, u16), player: &mut Player) -> bool {
         if *player.segments.front().unwrap() != self.location {
-            return;
+            return false;
         };
 
         self.location = random_location(screen_size, player);
         player.elongate(screen_size);
+
+        true
     }
 }
 impl Render for Food {
@@ -169,11 +173,12 @@ impl Render for Food {
     ) -> Result<(), std::io::Error> {
         write!(
             screen,
-            "{}{}{}'{}",
+            "{}{}{}'{}{}",
             termion::cursor::Goto(self.location.0, self.location.1),
             termion::color::Bg(termion::color::Rgb(255, 0, 0)),
             termion::color::Fg(termion::color::Rgb(0, 0, 0)),
             termion::color::Bg(termion::color::Reset),
+            termion::color::Fg(termion::color::Reset),
         )
     }
 }
@@ -212,6 +217,7 @@ fn main() {
         Food::new(&screen_size, &player),
         Food::new(&screen_size, &player),
     ];
+    let mut score: u8 = 0;
 
     let mut prev_frame_time = std::time::Instant::now();
     let mut prev_move_update = std::time::Instant::now();
@@ -242,18 +248,29 @@ fn main() {
         // Updating player position
         if prev_move_update.elapsed() > MOVE_DURATION {
             prev_move_update = std::time::Instant::now();
-            player.update_pos(&screen_size)
+            if player.update_pos(&screen_size) {
+                break 'game;
+            }
         };
 
         for i in &mut food {
             // Checking if eaten
-            i.check_eaten(&screen_size, &mut player);
+            if i.check_eaten(&screen_size, &mut player) {
+                score += 1;
+            };
 
             // Rendering
             i.render(&mut screen).unwrap();
         }
         player.render(&mut screen).unwrap();
-        write!(screen, "{}", termion::cursor::Goto(1, screen_size.1)).unwrap();
+        write!(
+            screen,
+            "{} Score: {}{} ",
+            termion::cursor::Goto(2, screen_size.1),
+            score,
+            termion::cursor::Goto(0, screen_size.1),
+        )
+        .unwrap();
 
         // Flushing to screen
         screen.flush().unwrap();
@@ -267,4 +284,13 @@ fn main() {
             prev_frame_time = std::time::Instant::now();
         }
     }
+
+    write!(
+        screen,
+        "{}\nGame over! Score: {}",
+        termion::clear::BeforeCursor,
+        score
+    )
+    .unwrap();
+    screen.flush().unwrap();
 }
